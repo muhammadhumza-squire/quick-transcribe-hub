@@ -7,7 +7,14 @@ from pathlib import Path
 import tempfile
 
 app = Flask(__name__)
-CORS(app)
+# Enable CORS for all routes with additional options
+CORS(app, resources={
+    r"/*": {
+        "origins": "*",
+        "methods": ["GET", "POST", "OPTIONS"],
+        "allow_headers": ["Content-Type"]
+    }
+})
 
 # Load the model
 parakeet_ctc_model_6B = EncDecCTCModelBPE.from_pretrained(model_name="nvidia/parakeet-ctc-0.6b")
@@ -31,8 +38,13 @@ def transcribe_audio_file(file_path):
     except Exception as e:
         return {"error": str(e)}
 
-@app.route('/transcribe', methods=['POST'])
+@app.route('/transcribe', methods=['POST', 'OPTIONS'])
 def transcribe():
+    # Handle preflight requests
+    if request.method == 'OPTIONS':
+        response = app.make_default_options_response()
+        return response
+
     if 'audio' not in request.files:
         return jsonify({"error": "No audio file provided"}), 400
     
@@ -53,4 +65,4 @@ def transcribe():
     return jsonify(result)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(debug=True, host='0.0.0.0', port=5000)
