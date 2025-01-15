@@ -1,13 +1,15 @@
 import React, { useState, useRef } from 'react';
-import { Mic, Square, Upload } from 'lucide-react';
+import { Mic, Square, Upload, Download } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import lamejs from 'lamejs';
 
 const Index = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [transcription, setTranscription] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [recordedAudio, setRecordedAudio] = useState<Blob | null>(null);
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
   const { toast } = useToast();
@@ -24,6 +26,7 @@ const Index = () => {
 
       mediaRecorder.current.onstop = async () => {
         const audioBlob = new Blob(audioChunks.current, { type: 'audio/wav' });
+        setRecordedAudio(audioBlob);
         await handleAudioUpload(audioBlob);
       };
 
@@ -96,6 +99,45 @@ const Index = () => {
     }
   };
 
+  const downloadRecording = async () => {
+    if (!recordedAudio) return;
+
+    const audioContext = new AudioContext();
+    const audioData = await recordedAudio.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(audioData);
+    
+    // Convert to MP3
+    const mp3Encoder = new lamejs.Mp3Encoder(1, audioBuffer.sampleRate, 128);
+    const samples = new Int16Array(audioBuffer.length);
+    const channel = audioBuffer.getChannelData(0);
+    
+    // Convert Float32 to Int16
+    for (let i = 0; i < channel.length; i++) {
+      samples[i] = channel[i] < 0 ? channel[i] * 0x8000 : channel[i] * 0x7FFF;
+    }
+    
+    const mp3Data = mp3Encoder.encodeBuffer(samples);
+    const mp3Final = mp3Encoder.flush();
+    
+    // Combine the encoded data
+    const mp3Blob = new Blob([mp3Data, mp3Final], { type: 'audio/mp3' });
+    
+    // Create download link
+    const url = URL.createObjectURL(mp3Blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'recording.mp3';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    toast({
+      title: "Success",
+      description: "Recording downloaded as MP3"
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-purple-50 to-white p-8">
       <div className="max-w-2xl mx-auto space-y-8">
@@ -131,6 +173,19 @@ const Index = () => {
               <Upload className="w-4 h-4 mr-2" />
               Upload Audio
             </Button>
+
+            {recordedAudio && (
+              <Button
+                variant="outline"
+                className="w-40"
+                onClick={downloadRecording}
+                disabled={isProcessing || isRecording}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download MP3
+              </Button>
+            )}
+
             <input
               type="file"
               id="fileInput"
