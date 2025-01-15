@@ -1,13 +1,13 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import os
 import librosa
 from nemo.collections.asr.models import EncDecCTCModelBPE
 from pathlib import Path
 import tempfile
+import datetime
 
 app = Flask(__name__)
-# Enable CORS for all routes with additional options
 CORS(app, resources={
     r"/*": {
         "origins": "*",
@@ -15,6 +15,11 @@ CORS(app, resources={
         "allow_headers": ["Content-Type"]
     }
 })
+
+# Create uploads directory if it doesn't exist
+UPLOAD_FOLDER = 'uploads'
+if not os.path.exists(UPLOAD_FOLDER):
+    os.makedirs(UPLOAD_FOLDER)
 
 # Load the model
 parakeet_ctc_model_6B = EncDecCTCModelBPE.from_pretrained(model_name="nvidia/parakeet-ctc-0.6b")
@@ -50,17 +55,20 @@ def transcribe():
     
     audio_file = request.files['audio']
     
-    # Save the file temporarily
-    temp_dir = tempfile.mkdtemp()
-    temp_path = os.path.join(temp_dir, "temp_audio.wav")
-    audio_file.save(temp_path)
+    # Generate unique filename with timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"recording_{timestamp}.mp3"
+    file_path = os.path.join(UPLOAD_FOLDER, filename)
+    
+    # Save the file
+    audio_file.save(file_path)
     
     # Process the audio
-    result = transcribe_audio_file(temp_path)
+    result = transcribe_audio_file(file_path)
     
-    # Clean up
-    os.remove(temp_path)
-    os.rmdir(temp_dir)
+    # Add file path to response
+    result['file_path'] = file_path
+    result['filename'] = filename
     
     return jsonify(result)
 
